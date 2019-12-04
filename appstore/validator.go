@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -121,6 +122,11 @@ func (c *Client) parseResponse(resp *http.Response, result interface{}, ctx cont
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode >= 400 {
+		errMsg := fmt.Sprintf("http status: %s, body is: %s", resp.Status, string(buf))
+		return errors.New(errMsg) // return the http body as the error
 	}
 
 	err = json.Unmarshal(buf, &result)
