@@ -121,6 +121,7 @@ func (c *Client) Verify(ctx context.Context, reqBody IAPRequest, result interfac
 			return c.parseResponse(resp, result, ctx, reqBody)
 		}
 		errMsg = fmt.Sprintf("http error status: %s", resp.Status)
+		<-time.After(100 * time.Millisecond) // backoff for a second...
 	}
 	return errors.New(errMsg) // return the http error
 }
