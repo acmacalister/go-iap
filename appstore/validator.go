@@ -97,7 +97,7 @@ func NewWithClient(client *http.Client) *Client {
 }
 
 // Verify sends receipts and gets validation result
-func (c *Client) Verify(ctx context.Context, reqBody IAPRequest, result interface{}) error {
+func (c *Client) Verify(ctx context.Context, reqBody IAPRequest, result interface{}, retryAttempts int) error {
 	b := new(bytes.Buffer)
 	if err := json.NewEncoder(b).Encode(reqBody); err != nil {
 		return err
@@ -109,12 +109,20 @@ func (c *Client) Verify(ctx context.Context, reqBody IAPRequest, result interfac
 	}
 	req.Header.Set("Content-Type", ContentType)
 	req = req.WithContext(ctx)
-	resp, err := c.httpCli.Do(req)
-	if err != nil {
-		return err
+	var errMsg string
+
+	for i := 0; i < retryAttempts; i++ {
+		resp, err := c.httpCli.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return c.parseResponse(resp, result, ctx, reqBody)
+		}
+		errMsg = fmt.Sprintf("http error status: %s", resp.Status)
 	}
-	defer resp.Body.Close()
-	return c.parseResponse(resp, result, ctx, reqBody)
+	return errors.New(errMsg) // return the http error
 }
 
 func (c *Client) parseResponse(resp *http.Response, result interface{}, ctx context.Context, reqBody IAPRequest) error {
@@ -122,11 +130,6 @@ func (c *Client) parseResponse(resp *http.Response, result interface{}, ctx cont
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
-	}
-
-	if resp.StatusCode >= 400 {
-		errMsg := fmt.Sprintf("http status: %s, body is: %s", resp.Status, string(buf))
-		return errors.New(errMsg) // return the http body as the error
 	}
 
 	err = json.Unmarshal(buf, &result)
